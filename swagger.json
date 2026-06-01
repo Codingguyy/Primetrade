@@ -1,0 +1,536 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PrimeTrade API",
+    "description": "REST API for PrimeTrade task management app. Built with Next.js 14 App Router + MongoDB + JWT. Supports role-based access control (user / admin).\n\n**Authentication:** All protected routes require a JWT Bearer token in the `Authorization` header.\n\n```\nAuthorization: Bearer <token>\n```\n\nObtain a token via `POST /api/auth/register` or `POST /api/auth/login`.",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Default (same origin)"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "64f1a2b3c4d5e6f7a8b9c0d1" },
+          "name": { "type": "string", "example": "Alice Smith" },
+          "email": { "type": "string", "format": "email", "example": "alice@example.com" },
+          "role": { "type": "string", "enum": ["user", "admin"], "example": "user" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string", "example": "64f1a2b3c4d5e6f7a8b9c0d2" },
+          "title": { "type": "string", "example": "Fix login bug" },
+          "description": { "type": "string", "example": "The login page throws 500 on empty password" },
+          "status": { "type": "string", "enum": ["pending", "in-progress", "done"], "example": "pending" },
+          "priority": { "type": "string", "enum": ["low", "medium", "high"], "example": "high" },
+          "user": { "type": "string", "example": "64f1a2b3c4d5e6f7a8b9c0d1" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": false },
+          "message": { "type": "string", "example": "error description" }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer", "example": 1 },
+          "limit": { "type": "integer", "example": 10 },
+          "total": { "type": "integer", "example": 42 },
+          "pages": { "type": "integer", "example": 5 }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "Auth", "description": "Registration, login, and current user" },
+    { "name": "Tasks", "description": "CRUD for the authenticated user's tasks" },
+    { "name": "Admin", "description": "Admin-only endpoints for user and stats management" }
+  ],
+  "paths": {
+    "/auth/first-user-check": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Check if any users exist",
+        "description": "Returns whether the database has any registered users. Used by the register page to show the 'first user = admin' notice. Exposes no sensitive data.",
+        "operationId": "firstUserCheck",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "isFirst": { "type": "boolean", "example": true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register a new account",
+        "description": "Creates a new user account. The very first user to register is automatically assigned the `admin` role. All subsequent users receive the `user` role.",
+        "operationId": "register",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "email", "password"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 2, "maxLength": 50, "example": "Alice Smith" },
+                  "email": { "type": "string", "format": "email", "example": "alice@example.com" },
+                  "password": { "type": "string", "minLength": 6, "example": "secret123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "account created" },
+                    "token": { "type": "string", "example": "eyJhbGci..." },
+                    "user": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing fields / invalid email / password too short / email already in use", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Login",
+        "description": "Authenticates a user with email and password. Returns a JWT token valid for use in the `Authorization` header.",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "example": "alice@example.com" },
+                  "password": { "type": "string", "example": "secret123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "logged in" },
+                    "token": { "type": "string", "example": "eyJhbGci..." },
+                    "user": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing email or password", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Invalid email or password", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Get current user",
+        "description": "Returns the profile of the currently authenticated user based on the JWT token.",
+        "operationId": "getMe",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Current user profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "user": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "No token / invalid or expired token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "tags": ["Tasks"],
+        "summary": "List tasks",
+        "description": "Returns a paginated list of tasks belonging to the authenticated user. Supports filtering by status and priority.",
+        "operationId": "listTasks",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "description": "Page number (default: 1)", "schema": { "type": "integer", "default": 1, "example": 1 } },
+          { "name": "limit", "in": "query", "description": "Items per page (default: 10)", "schema": { "type": "integer", "default": 10, "example": 10 } },
+          { "name": "status", "in": "query", "description": "Filter by task status", "schema": { "type": "string", "enum": ["pending", "in-progress", "done"] } },
+          { "name": "priority", "in": "query", "description": "Filter by priority", "schema": { "type": "string", "enum": ["low", "medium", "high"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated task list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Task" } },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Tasks"],
+        "summary": "Create a task",
+        "description": "Creates a new task for the authenticated user. Title is required; other fields default to `pending` status and `medium` priority.",
+        "operationId": "createTask",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": { "type": "string", "maxLength": 100, "example": "Fix login bug" },
+                  "description": { "type": "string", "maxLength": 500, "example": "Page throws 500 on empty password" },
+                  "status": { "type": "string", "enum": ["pending", "in-progress", "done"], "default": "pending" },
+                  "priority": { "type": "string", "enum": ["low", "medium", "high"], "default": "medium" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "task created" },
+                    "data": { "$ref": "#/components/schemas/Task" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Title is required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/tasks/{id}": {
+      "get": {
+        "tags": ["Tasks"],
+        "summary": "Get a task",
+        "description": "Returns a single task by ID. The task must belong to the authenticated user.",
+        "operationId": "getTask",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "description": "Task MongoDB ObjectId", "schema": { "type": "string", "example": "64f1a2b3c4d5e6f7a8b9c0d2" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": { "$ref": "#/components/schemas/Task" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Task not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "put": {
+        "tags": ["Tasks"],
+        "summary": "Update a task",
+        "description": "Updates one or more fields of an existing task. Only fields included in the request body are modified.",
+        "operationId": "updateTask",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "description": "Task MongoDB ObjectId", "schema": { "type": "string", "example": "64f1a2b3c4d5e6f7a8b9c0d2" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string", "maxLength": 100, "example": "Fixed login bug" },
+                  "description": { "type": "string", "maxLength": 500 },
+                  "status": { "type": "string", "enum": ["pending", "in-progress", "done"] },
+                  "priority": { "type": "string", "enum": ["low", "medium", "high"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "task updated" },
+                    "data": { "$ref": "#/components/schemas/Task" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Task not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Tasks"],
+        "summary": "Delete a task",
+        "description": "Permanently deletes a task. The task must belong to the authenticated user.",
+        "operationId": "deleteTask",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "description": "Task MongoDB ObjectId", "schema": { "type": "string", "example": "64f1a2b3c4d5e6f7a8b9c0d2" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "task deleted" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Task not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/admin/stats": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Platform statistics",
+        "description": "Returns aggregate counts for users and tasks across the whole platform. Admin only.",
+        "operationId": "getStats",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Stats returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "totalUsers": { "type": "integer", "example": 12 },
+                        "totalTasks": { "type": "integer", "example": 48 },
+                        "pendingTasks": { "type": "integer", "example": 20 },
+                        "doneTasks": { "type": "integer", "example": 15 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Admins only", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List all users",
+        "description": "Returns all registered users sorted by registration date (newest first). Admin only.",
+        "operationId": "listUsers",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "User list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "count": { "type": "integer", "example": 12 },
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/User" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Admins only", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/admin/users/{id}": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Change a user's role",
+        "description": "Promotes or demotes a user. Cannot change your own role or the role of another admin.",
+        "operationId": "updateUserRole",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "description": "Target user's MongoDB ObjectId", "schema": { "type": "string", "example": "64f1a2b3c4d5e6f7a8b9c0d1" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["role"],
+                "properties": {
+                  "role": { "type": "string", "enum": ["user", "admin"], "example": "admin" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Role updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "role updated to admin" },
+                    "data": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid role / cannot change own role / target is another admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Admins only", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "User not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Admin"],
+        "summary": "Delete user and their tasks",
+        "description": "Permanently deletes a user account and all tasks associated with them. Cannot delete yourself or another admin.",
+        "operationId": "deleteUser",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "description": "Target user's MongoDB ObjectId", "schema": { "type": "string", "example": "64f1a2b3c4d5e6f7a8b9c0d1" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "User and their tasks deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "user and their tasks deleted" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Cannot delete yourself / another admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Admins only", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "User not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  }
+}
