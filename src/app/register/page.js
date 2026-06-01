@@ -15,7 +15,6 @@ const [loading, setLoading] = useState(false)
 const [isFirstUser, setIsFirstUser] = useState(false)
 
 useEffect(() => {
-// if already logged in, redirect away — dont let a new registration stomp the session
 const existingToken = localStorage.getItem('token')
 if (existingToken) {
 fetch('/api/auth/me', { headers: { Authorization: `Bearer ${existingToken}` } })
@@ -72,13 +71,11 @@ setError(data.message)
 return
 }
 
-// only store token/user if there is no existing admin session
-// this prevents a new user registration from overwriting the logged-in admin's session
+
 const existingToken = localStorage.getItem('token')
 if (existingToken) {
-// an admin created this account — dont overwrite their session, just show success
 setError('')
-// redirect admin back to admin panel since they're managing users
+
 router.push('/admin')
 return
 }

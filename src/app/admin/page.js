@@ -29,9 +29,7 @@ router.push('/login')
 return
 }
 
-// always use the server response to set the user — never read from localStorage
-// this is critical: if a new user registered, their token may be in localStorage
-// but by re-fetching /me with the current token we always get the right person
+
 const freshUser = d.user
 localStorage.setItem('user', JSON.stringify(freshUser))
 

@@ -36,10 +36,9 @@ router.push('/login')
 return
 }
 
-// use the fetched user data directly — dont read from localStorage
-// this ensures we always show the correct logged-in user, not whoever last wrote to storage
+
 const freshUser = d.user
-localStorage.setItem('token', token) // keep the token, but update user from server
+localStorage.setItem('token', token) 
 localStorage.setItem('user', JSON.stringify(freshUser))
 setUser(freshUser)
 loadTasks(token)
